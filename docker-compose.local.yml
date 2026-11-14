@@ -1,0 +1,36 @@
+# STTNS — app Next.js en conteneur, branchée sur le Supabase LOCAL (`supabase start`).
+#
+#   docker compose -f docker-compose.local.yml --env-file .env.local up -d --build
+#   → http://localhost:3001
+#
+# L'URL Supabase (http://127.0.0.1:54321) est figée dans le build Next et sert à la fois
+# au navigateur et au serveur. Le relais `supabase-relay` partage la pile réseau du
+# conteneur de l'app et renvoie 127.0.0.1:54321 vers le Supabase de l'hôte : même URL,
+# des deux côtés.
+services:
+  sttns:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    image: sttns-app:local
+    container_name: sttns-app-local
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  supabase-relay:
+    image: alpine/socat:1.8.0.0
+    container_name: sttns-supabase-relay
+    network_mode: "service:sttns"
+    command: TCP-LISTEN:54321,fork,reuseaddr TCP:host.docker.internal:54321
+    depends_on:
+      - sttns
+    restart: unless-stopped

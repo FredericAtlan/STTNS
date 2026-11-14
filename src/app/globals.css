@@ -1,0 +1,229 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * STTNS Design tokens — Étape 1 (fondations cliniques)
+ * Structure monochrome zinc · sémantique vitale uniquement
+ * Consommation Tailwind : bg-background, text-foreground, border-border, etc.
+ */
+:root {
+  /* Structure monochrome (canaux RGB pour alpha Tailwind) */
+  --background: 250 250 250; /* zinc-50 */
+  --foreground: 24 24 27; /* zinc-900 */
+  --card: 255 255 255;
+  --card-foreground: 24 24 27;
+  --muted: 244 244 245; /* zinc-100 */
+  --muted-foreground: 113 113 122; /* zinc-500 */
+  --border: 228 228 231; /* zinc-200 */
+  --input: 228 228 231;
+  --ring: 5 150 105; /* emerald-600 focus */
+
+  /* Action primaire (pas décoratif) */
+  --primary: 5 150 105; /* emerald-600 */
+  --primary-foreground: 255 255 255;
+  --primary-hover: 4 120 87; /* emerald-700 */
+
+  /* Sémantique vitale */
+  --destructive: 220 38 38; /* Impact 0 / hard block */
+  --destructive-foreground: 255 255 255;
+  --warning: 234 88 12; /* R:3 / alertes */
+  --warning-foreground: 255 255 255;
+  --success: 5 150 105; /* done / OK */
+  --success-foreground: 255 255 255;
+  --info: 37 99 235; /* rare — in_progress / liens */
+  --info-foreground: 255 255 255;
+
+  /* Compat legacy — sttns.accent */
+  --sttns-accent: #059669;
+  --sttns-accent-hover: #047857;
+
+  /* Densité desktop */
+  --sttns-text-body: 0.8125rem; /* 13px */
+  --sttns-text-page-title: 1.125rem; /* 18px */
+  --sttns-text-kpi: 1.25rem; /* 20px */
+  --sttns-space-page: 1.25rem;
+  --sttns-space-section: 0.75rem;
+  --sttns-row-h: 2.25rem;
+  --sttns-radius: 0.75rem; /* xl — cards / surfaces */
+
+  /* Sidebar / chrome app */
+  --sttns-sidebar-w-collapsed: 4.5rem;
+  --sttns-sidebar-w-expanded: 14rem; /* ~224px — libellés longs en 2 lignes */
+  --sttns-sidebar-w: var(--sttns-sidebar-w-collapsed);
+  --sttns-header-h: 3.5rem; /* 56px */
+
+  /* Élévation surfaces de contrôle (slide-over, modal) */
+  --sttns-shadow-elevated:
+    0 1px 2px rgb(24 24 27 / 0.04),
+    0 8px 24px rgb(24 24 27 / 0.08),
+    0 16px 48px rgb(24 24 27 / 0.06);
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-size: var(--sttns-text-body);
+    line-height: 1.375;
+  }
+
+  /* Scrollbars visibles (macOS masque les barres overlay par défaut) */
+  html {
+    scrollbar-width: auto;
+    scrollbar-color: #52525b #e4e4e7;
+  }
+
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: #52525b #e4e4e7;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    -webkit-appearance: none;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #e4e4e7;
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #52525b;
+    border: 2px solid #e4e4e7;
+    border-radius: 9999px;
+    min-height: 32px;
+    min-width: 32px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: #e4e4e7;
+  }
+}
+
+@layer utilities {
+  .shadow-elevated {
+    box-shadow: var(--sttns-shadow-elevated);
+  }
+
+  .text-page-title {
+    font-size: var(--sttns-text-page-title);
+    line-height: 1.3;
+    font-weight: 700;
+  }
+
+  .text-kpi {
+    font-size: var(--sttns-text-kpi);
+    line-height: 1.2;
+    font-weight: 700;
+  }
+
+  .min-h-row {
+    min-height: var(--sttns-row-h);
+  }
+}
+
+@layer components {
+  /*
+   * Primitives cliniques — Étape 2
+   * Boutons : taille défaut = sm (tableaux) · ajouter .sttns-btn-md pour actions page
+   */
+  .sttns-card {
+    @apply rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm;
+  }
+
+  .sttns-input {
+    @apply w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50;
+    font-size: var(--sttns-text-body);
+    min-height: var(--sttns-row-h);
+  }
+  textarea.sttns-input {
+    @apply resize-y;
+    min-height: auto;
+  }
+  select.sttns-input {
+    @apply pr-8;
+  }
+  .sttns-label {
+    @apply mb-0.5 block text-xs font-semibold text-foreground/80;
+  }
+
+  .sttns-btn-primary,
+  .sttns-btn-secondary,
+  .sttns-btn-ghost,
+  .sttns-btn-destructive {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md font-semibold shadow-sm transition disabled:pointer-events-none disabled:opacity-50;
+    /* sm — défaut (tableaux / densités) */
+    @apply px-2.5 py-1.5 text-xs;
+  }
+  .sttns-btn-primary {
+    @apply border border-primary bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+  .sttns-btn-secondary {
+    @apply border border-border bg-card text-foreground hover:bg-muted;
+  }
+  .sttns-btn-ghost {
+    @apply border border-transparent bg-transparent text-muted-foreground shadow-none hover:bg-muted hover:text-foreground;
+  }
+  .sttns-btn-destructive {
+    @apply border border-destructive bg-destructive text-destructive-foreground hover:bg-destructive/90;
+  }
+  .sttns-btn-icon {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50;
+  }
+  .sttns-btn-icon.sttns-btn-ghost {
+    @apply border-transparent shadow-none;
+  }
+  /* md — CTAs de page / formulaires */
+  .sttns-btn-md {
+    @apply px-3.5 py-2 text-sm;
+  }
+  .sttns-btn-icon.sttns-btn-md {
+    @apply h-10 w-10;
+  }
+  /* sm explicite (si besoin après un md) */
+  .sttns-btn-sm {
+    @apply px-2.5 py-1.5 text-xs;
+  }
+  .sttns-btn-icon.sttns-btn-sm {
+    @apply h-8 w-8;
+  }
+
+  .sttns-page-stack {
+    @apply space-y-5;
+  }
+
+  .sttns-kanban-column {
+    @apply rounded-xl p-2.5;
+  }
+  .sttns-kanban-card {
+    @apply rounded-lg border border-border/90 bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-px hover:border-border hover:shadow-md;
+  }
+
+  /* Conteneur scroll table / liste — piste toujours repérable */
+  .sttns-scroll-x {
+    @apply w-full max-w-full overflow-x-scroll;
+    box-shadow: inset 0 -10px 0 rgb(var(--border));
+  }
+
+  .sttns-scroll-y {
+    @apply overflow-y-scroll;
+    box-shadow: inset -10px 0 0 rgb(var(--border));
+  }
+
+  .sttns-scroll-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .sttns-scroll-hidden::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
