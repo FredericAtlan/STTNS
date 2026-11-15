@@ -1,13 +1,12 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { applyPendingInvitesForUser } from "@/lib/sttns/invites";
+import { safeInternalPath } from "@/lib/security/urls";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
-
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = safeInternalPath(searchParams.get("next"));
 
   if (!code) {
     return NextResponse.redirect(

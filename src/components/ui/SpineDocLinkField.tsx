@@ -2,6 +2,7 @@
 
 import { ExternalLink, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isHttpUrl } from "@/lib/security/urls";
 
 interface Props {
   label?: string;
@@ -16,13 +17,7 @@ interface Props {
 
 function isValidHttpUrl(value: string): boolean {
   const trimmed = value.trim();
-  if (!trimmed) return true;
-  try {
-    const url = new URL(trimmed);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
+  return !trimmed || isHttpUrl(trimmed);
 }
 
 export function SpineDocLinkField({
@@ -45,7 +40,7 @@ export function SpineDocLinkField({
       {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
 
       {readOnly ? (
-        trimmed ? (
+        trimmed && isHttpUrl(trimmed) ? (
           <a
             href={trimmed}
             target="_blank"

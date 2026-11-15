@@ -1,6 +1,6 @@
 -- STTNS — schéma de référence (structure seule, aucune donnée).
 -- Généré par scripts/ope/baseline.sh — ne pas modifier à la main.
--- source-migrations: 20260721040000
+-- source-migrations: 20261115120000
 
 --
 -- PostgreSQL database dump
@@ -487,6 +487,33 @@ CREATE FUNCTION public.sttns_apply_pending_invites(p_user_id uuid, p_email text)
     SET search_path TO 'public'
     AS $$
 DECLARE
+  v_auth_email text;
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    -- Appel d'un utilisateur : uniquement pour lui-même, avec l'e-mail de SON compte.
+    SELECT email INTO v_auth_email FROM auth.users WHERE id = auth.uid();
+    IF p_user_id IS DISTINCT FROM auth.uid()
+       OR lower(trim(coalesce(p_email, ''))) IS DISTINCT FROM lower(trim(coalesce(v_auth_email, ''))) THEN
+      RAISE EXCEPTION 'Invitations : identité non conforme' USING ERRCODE = '42501';
+    END IF;
+  ELSIF coalesce(auth.role(), '') IN ('anon', 'authenticated') THEN
+    RAISE EXCEPTION 'Invitations : authentification requise' USING ERRCODE = '42501';
+  END IF;
+  -- Sinon : contexte privilégié (service_role, déclencheur d'inscription).
+  RETURN sttns_apply_pending_invites_unchecked(p_user_id, p_email);
+END;
+$$;
+
+
+--
+-- Name: sttns_apply_pending_invites_unchecked(uuid, text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sttns_apply_pending_invites_unchecked(p_user_id uuid, p_email text) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
   inv RECORD;
   r TEXT;
   applied_count integer := 0;
@@ -780,6 +807,29 @@ $$;
 
 CREATE FUNCTION public.sttns_duplicate_project(source_id uuid, new_slug text, new_name text, creator_id uuid) RETURNS uuid
     LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL OR creator_id IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'Duplication refusée : le créateur doit être l''utilisateur connecté'
+      USING ERRCODE = '42501';
+  END IF;
+  IF NOT (sttns_is_project_member(source_id) OR sttns_is_platform_admin()) THEN
+    RAISE EXCEPTION 'Duplication refusée : vous n''êtes pas membre du projet source'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN sttns_duplicate_project_unchecked(source_id, new_slug, new_name, creator_id);
+END;
+$$;
+
+
+--
+-- Name: sttns_duplicate_project_unchecked(uuid, text, text, uuid); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sttns_duplicate_project_unchecked(source_id uuid, new_slug text, new_name text, creator_id uuid) RETURNS uuid
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
     AS $$
 DECLARE
   v_new_project_id UUID;
@@ -1258,6 +1308,18 @@ $$;
 
 
 --
+-- Name: sttns_project_has_members(uuid); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sttns_project_has_members(p_project_id uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT EXISTS (SELECT 1 FROM sttns_project_members WHERE project_id = p_project_id);
+$$;
+
+
+--
 -- Name: sttns_project_member_has_role(uuid, public.sttns_project_role[]); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1286,6 +1348,22 @@ BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END;
+$$;
+
+
+--
+-- Name: sttns_shares_project_with(uuid); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sttns_shares_project_with(p_other uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM sttns_project_members a
+    JOIN sttns_project_members b ON b.project_id = a.project_id
+    WHERE a.user_id = auth.uid() AND b.user_id = p_other
+  );
 $$;
 
 
@@ -2325,6 +2403,7 @@ CREATE TABLE public.sttns_projects (
     personas_cast_locked_at timestamp with time zone,
     personas_cast_locked_by uuid,
     settings jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_by uuid DEFAULT auth.uid(),
     CONSTRAINT sttns_projects_consensus_percent_check CHECK (((consensus_percent >= 1) AND (consensus_percent <= 100)))
 );
 
@@ -4762,9 +4841,9 @@ CREATE POLICY sttns_members_delete ON public.sttns_project_members FOR DELETE TO
 -- Name: sttns_project_members sttns_members_insert; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY sttns_members_insert ON public.sttns_project_members FOR INSERT TO authenticated WITH CHECK ((public.sttns_is_platform_admin() OR public.sttns_is_project_ceo(project_id) OR ((user_id = auth.uid()) AND (role = 'ceo'::public.sttns_project_role) AND (NOT (EXISTS ( SELECT 1
-   FROM public.sttns_project_members m
-  WHERE (m.project_id = m.project_id)))))));
+CREATE POLICY sttns_members_insert ON public.sttns_project_members FOR INSERT TO authenticated WITH CHECK ((public.sttns_is_platform_admin() OR public.sttns_is_project_ceo(project_id) OR ((user_id = auth.uid()) AND (role = 'ceo'::public.sttns_project_role) AND (NOT public.sttns_project_has_members(project_id)) AND (EXISTS ( SELECT 1
+   FROM public.sttns_projects p
+  WHERE ((p.id = sttns_project_members.project_id) AND (p.created_by = auth.uid())))))));
 
 
 --
@@ -4856,10 +4935,10 @@ CREATE POLICY sttns_peer_reviews_update ON public.sttns_peer_reviews FOR UPDATE 
 ALTER TABLE public.sttns_persona_job_type_defs ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: sttns_persona_job_type_defs sttns_persona_job_type_defs_all; Type: POLICY; Schema: public; Owner: -
+-- Name: sttns_persona_job_type_defs sttns_persona_job_type_defs_members; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY sttns_persona_job_type_defs_all ON public.sttns_persona_job_type_defs TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY sttns_persona_job_type_defs_members ON public.sttns_persona_job_type_defs TO authenticated USING ((public.sttns_is_project_member(project_id) OR public.sttns_is_platform_admin())) WITH CHECK ((public.sttns_is_project_member(project_id) OR public.sttns_is_platform_admin()));
 
 
 --
@@ -4921,10 +5000,10 @@ CREATE POLICY sttns_persona_pain_points_select ON public.sttns_persona_pain_poin
 ALTER TABLE public.sttns_persona_tier_defs ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: sttns_persona_tier_defs sttns_persona_tier_defs_all; Type: POLICY; Schema: public; Owner: -
+-- Name: sttns_persona_tier_defs sttns_persona_tier_defs_members; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY sttns_persona_tier_defs_all ON public.sttns_persona_tier_defs TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY sttns_persona_tier_defs_members ON public.sttns_persona_tier_defs TO authenticated USING ((public.sttns_is_project_member(project_id) OR public.sttns_is_platform_admin())) WITH CHECK ((public.sttns_is_project_member(project_id) OR public.sttns_is_platform_admin()));
 
 
 --
@@ -4992,7 +5071,7 @@ CREATE POLICY sttns_profiles_insert_own ON public.sttns_profiles FOR INSERT TO a
 -- Name: sttns_profiles sttns_profiles_select; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY sttns_profiles_select ON public.sttns_profiles FOR SELECT TO authenticated USING (true);
+CREATE POLICY sttns_profiles_select ON public.sttns_profiles FOR SELECT TO authenticated USING (((id = auth.uid()) OR public.sttns_shares_project_with(id) OR public.sttns_is_platform_admin()));
 
 
 --
@@ -5122,16 +5201,7 @@ CREATE POLICY sttns_projects_insert ON public.sttns_projects FOR INSERT TO authe
 -- Name: sttns_projects sttns_projects_select; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY sttns_projects_select ON public.sttns_projects FOR SELECT TO authenticated USING ((public.sttns_is_project_member(id) OR public.sttns_is_platform_admin() OR (NOT (EXISTS ( SELECT 1
-   FROM public.sttns_project_members m
-  WHERE (m.project_id = sttns_projects.id))))));
-
-
---
--- Name: POLICY sttns_projects_select ON sttns_projects; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON POLICY sttns_projects_select ON public.sttns_projects IS 'Membre ou admin voit le projet ; projet sans aucun membre visible pour revendication CEO au login.';
+CREATE POLICY sttns_projects_select ON public.sttns_projects FOR SELECT TO authenticated USING ((public.sttns_is_project_member(id) OR public.sttns_is_platform_admin() OR ((created_by = auth.uid()) AND (NOT public.sttns_project_has_members(id)))));
 
 
 --
@@ -5380,8 +5450,7 @@ GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
 -- Name: FUNCTION sttns_advance_workflow(p_initiative_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_advance_workflow(p_initiative_id uuid) TO anon;
-GRANT ALL ON FUNCTION public.sttns_advance_workflow(p_initiative_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.sttns_advance_workflow(p_initiative_id uuid) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_advance_workflow(p_initiative_id uuid) TO service_role;
 
 
@@ -5389,16 +5458,24 @@ GRANT ALL ON FUNCTION public.sttns_advance_workflow(p_initiative_id uuid) TO ser
 -- Name: FUNCTION sttns_apply_pending_invites(p_user_id uuid, p_email text); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_apply_pending_invites(p_user_id uuid, p_email text) TO anon;
+REVOKE ALL ON FUNCTION public.sttns_apply_pending_invites(p_user_id uuid, p_email text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_apply_pending_invites(p_user_id uuid, p_email text) TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_apply_pending_invites(p_user_id uuid, p_email text) TO service_role;
+
+
+--
+-- Name: FUNCTION sttns_apply_pending_invites_unchecked(p_user_id uuid, p_email text); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.sttns_apply_pending_invites_unchecked(p_user_id uuid, p_email text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.sttns_apply_pending_invites_unchecked(p_user_id uuid, p_email text) TO service_role;
 
 
 --
 -- Name: FUNCTION sttns_audit_assignee_change(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_audit_assignee_change() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_audit_assignee_change() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_audit_assignee_change() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_audit_assignee_change() TO service_role;
 
@@ -5407,7 +5484,7 @@ GRANT ALL ON FUNCTION public.sttns_audit_assignee_change() TO service_role;
 -- Name: FUNCTION sttns_audit_parent_change(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_audit_parent_change() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_audit_parent_change() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_audit_parent_change() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_audit_parent_change() TO service_role;
 
@@ -5416,7 +5493,7 @@ GRANT ALL ON FUNCTION public.sttns_audit_parent_change() TO service_role;
 -- Name: FUNCTION sttns_audit_priority_change(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_audit_priority_change() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_audit_priority_change() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_audit_priority_change() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_audit_priority_change() TO service_role;
 
@@ -5425,7 +5502,7 @@ GRANT ALL ON FUNCTION public.sttns_audit_priority_change() TO service_role;
 -- Name: FUNCTION sttns_audit_status_change(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_audit_status_change() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_audit_status_change() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_audit_status_change() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_audit_status_change() TO service_role;
 
@@ -5434,7 +5511,7 @@ GRANT ALL ON FUNCTION public.sttns_audit_status_change() TO service_role;
 -- Name: FUNCTION sttns_audit_work_item_link_added(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_audit_work_item_link_added() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_audit_work_item_link_added() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_audit_work_item_link_added() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_audit_work_item_link_added() TO service_role;
 
@@ -5443,7 +5520,7 @@ GRANT ALL ON FUNCTION public.sttns_audit_work_item_link_added() TO service_role;
 -- Name: FUNCTION sttns_audit_work_item_link_removed(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_audit_work_item_link_removed() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_audit_work_item_link_removed() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_audit_work_item_link_removed() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_audit_work_item_link_removed() TO service_role;
 
@@ -5452,7 +5529,7 @@ GRANT ALL ON FUNCTION public.sttns_audit_work_item_link_removed() TO service_rol
 -- Name: FUNCTION sttns_audit_work_item_updated(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_audit_work_item_updated() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_audit_work_item_updated() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_audit_work_item_updated() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_audit_work_item_updated() TO service_role;
 
@@ -5470,16 +5547,24 @@ GRANT ALL ON FUNCTION public.sttns_calculate_tree_path() TO service_role;
 -- Name: FUNCTION sttns_duplicate_project(source_id uuid, new_slug text, new_name text, creator_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_duplicate_project(source_id uuid, new_slug text, new_name text, creator_id uuid) TO anon;
+REVOKE ALL ON FUNCTION public.sttns_duplicate_project(source_id uuid, new_slug text, new_name text, creator_id uuid) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_duplicate_project(source_id uuid, new_slug text, new_name text, creator_id uuid) TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_duplicate_project(source_id uuid, new_slug text, new_name text, creator_id uuid) TO service_role;
+
+
+--
+-- Name: FUNCTION sttns_duplicate_project_unchecked(source_id uuid, new_slug text, new_name text, creator_id uuid); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.sttns_duplicate_project_unchecked(source_id uuid, new_slug text, new_name text, creator_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.sttns_duplicate_project_unchecked(source_id uuid, new_slug text, new_name text, creator_id uuid) TO service_role;
 
 
 --
 -- Name: FUNCTION sttns_guard_project_governance(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_guard_project_governance() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_guard_project_governance() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_guard_project_governance() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_guard_project_governance() TO service_role;
 
@@ -5488,7 +5573,7 @@ GRANT ALL ON FUNCTION public.sttns_guard_project_governance() TO service_role;
 -- Name: FUNCTION sttns_handle_new_user(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_handle_new_user() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_handle_new_user() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_handle_new_user() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_handle_new_user() TO service_role;
 
@@ -5497,7 +5582,7 @@ GRANT ALL ON FUNCTION public.sttns_handle_new_user() TO service_role;
 -- Name: FUNCTION sttns_is_platform_admin(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_is_platform_admin() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_is_platform_admin() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_is_platform_admin() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_is_platform_admin() TO service_role;
 
@@ -5506,7 +5591,7 @@ GRANT ALL ON FUNCTION public.sttns_is_platform_admin() TO service_role;
 -- Name: FUNCTION sttns_is_project_ceo(p_project_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_is_project_ceo(p_project_id uuid) TO anon;
+REVOKE ALL ON FUNCTION public.sttns_is_project_ceo(p_project_id uuid) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_is_project_ceo(p_project_id uuid) TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_is_project_ceo(p_project_id uuid) TO service_role;
 
@@ -5515,7 +5600,7 @@ GRANT ALL ON FUNCTION public.sttns_is_project_ceo(p_project_id uuid) TO service_
 -- Name: FUNCTION sttns_is_project_member(p_project_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_is_project_member(p_project_id uuid) TO anon;
+REVOKE ALL ON FUNCTION public.sttns_is_project_member(p_project_id uuid) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_is_project_member(p_project_id uuid) TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_is_project_member(p_project_id uuid) TO service_role;
 
@@ -5524,7 +5609,7 @@ GRANT ALL ON FUNCTION public.sttns_is_project_member(p_project_id uuid) TO servi
 -- Name: FUNCTION sttns_log_work_item_created(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_log_work_item_created() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_log_work_item_created() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_log_work_item_created() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_log_work_item_created() TO service_role;
 
@@ -5533,7 +5618,7 @@ GRANT ALL ON FUNCTION public.sttns_log_work_item_created() TO service_role;
 -- Name: FUNCTION sttns_on_review_insert(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_on_review_insert() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_on_review_insert() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_on_review_insert() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_on_review_insert() TO service_role;
 
@@ -5542,16 +5627,25 @@ GRANT ALL ON FUNCTION public.sttns_on_review_insert() TO service_role;
 -- Name: FUNCTION sttns_profiles_apply_invites_trigger(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_profiles_apply_invites_trigger() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_profiles_apply_invites_trigger() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_profiles_apply_invites_trigger() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_profiles_apply_invites_trigger() TO service_role;
+
+
+--
+-- Name: FUNCTION sttns_project_has_members(p_project_id uuid); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.sttns_project_has_members(p_project_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.sttns_project_has_members(p_project_id uuid) TO authenticated;
+GRANT ALL ON FUNCTION public.sttns_project_has_members(p_project_id uuid) TO service_role;
 
 
 --
 -- Name: FUNCTION sttns_project_member_has_role(p_project_id uuid, p_roles public.sttns_project_role[]); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_project_member_has_role(p_project_id uuid, p_roles public.sttns_project_role[]) TO anon;
+REVOKE ALL ON FUNCTION public.sttns_project_member_has_role(p_project_id uuid, p_roles public.sttns_project_role[]) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_project_member_has_role(p_project_id uuid, p_roles public.sttns_project_role[]) TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_project_member_has_role(p_project_id uuid, p_roles public.sttns_project_role[]) TO service_role;
 
@@ -5566,10 +5660,19 @@ GRANT ALL ON FUNCTION public.sttns_set_updated_at() TO service_role;
 
 
 --
+-- Name: FUNCTION sttns_shares_project_with(p_other uuid); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.sttns_shares_project_with(p_other uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.sttns_shares_project_with(p_other uuid) TO authenticated;
+GRANT ALL ON FUNCTION public.sttns_shares_project_with(p_other uuid) TO service_role;
+
+
+--
 -- Name: FUNCTION sttns_user_story_epic_matches_project(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_user_story_epic_matches_project() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_user_story_epic_matches_project() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_user_story_epic_matches_project() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_user_story_epic_matches_project() TO service_role;
 
@@ -5614,7 +5717,7 @@ GRANT ALL ON FUNCTION public.sttns_validate_work_item_link_same_project() TO ser
 -- Name: FUNCTION sttns_work_item_soft_delete(); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.sttns_work_item_soft_delete() TO anon;
+REVOKE ALL ON FUNCTION public.sttns_work_item_soft_delete() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.sttns_work_item_soft_delete() TO authenticated;
 GRANT ALL ON FUNCTION public.sttns_work_item_soft_delete() TO service_role;
 
@@ -6004,3 +6107,34 @@ CREATE POLICY "Project members can upload persona photos" ON storage.objects AS 
 CREATE POLICY "Users can delete their own avatar" ON storage.objects AS PERMISSIVE FOR DELETE TO authenticated USING (((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text)));
 CREATE POLICY "Users can update their own avatar" ON storage.objects AS PERMISSIVE FOR UPDATE TO authenticated USING (((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))) WITH CHECK (((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text)));
 CREATE POLICY "Users can upload their own avatar" ON storage.objects AS PERMISSIVE FOR INSERT TO authenticated WITH CHECK (((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text)));
+
+-- Les privilèges par défaut de Supabase redonnent EXECUTE à anon/authenticated sur toute
+-- fonction créée : on retire explicitement ceux que la base source n'accorde pas.
+REVOKE EXECUTE ON FUNCTION sttns_advance_workflow(uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_advance_workflow(uuid) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION sttns_apply_pending_invites_unchecked(uuid,text) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_apply_pending_invites_unchecked(uuid,text) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION sttns_apply_pending_invites(uuid,text) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_audit_assignee_change() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_audit_parent_change() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_audit_priority_change() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_audit_status_change() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_audit_work_item_link_added() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_audit_work_item_link_removed() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_audit_work_item_updated() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_duplicate_project_unchecked(uuid,text,text,uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_duplicate_project_unchecked(uuid,text,text,uuid) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION sttns_duplicate_project(uuid,text,text,uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_guard_project_governance() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_handle_new_user() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_is_platform_admin() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_is_project_ceo(uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_is_project_member(uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_log_work_item_created() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_on_review_insert() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_profiles_apply_invites_trigger() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_project_has_members(uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_project_member_has_role(uuid,sttns_project_role[]) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_shares_project_with(uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_user_story_epic_matches_project() FROM anon;
+REVOKE EXECUTE ON FUNCTION sttns_work_item_soft_delete() FROM anon;

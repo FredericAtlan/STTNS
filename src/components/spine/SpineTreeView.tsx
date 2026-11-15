@@ -23,6 +23,7 @@ import type {
 import { collectDefaultExpandedNodeIds } from "@/lib/sttns/spineTree";
 import { formatCyclePeriod } from "@/lib/sttns/cycles";
 import { cn } from "@/lib/utils";
+import { safeHref } from "@/lib/security/urls";
 
 interface Props {
   projectSlug: string;
@@ -389,7 +390,7 @@ function renderNode(
 
   if (node.kind === "task") {
     const notionUrl =
-      node.status === "done" && node.meta?.notionUrl ? node.meta.notionUrl : null;
+      node.status === "done" ? (safeHref(node.meta?.notionUrl) ?? null) : null;
 
     return (
       <div

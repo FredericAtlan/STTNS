@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { saveWorkItem } from "@/lib/sttns/workItems";
-import { requireProjectMember } from "@/lib/sttns/access";
+import { requireProjectEditor } from "@/lib/sttns/access";
 import {
   archiveWhyItemIdSchema,
   jtbdInputSchema,
@@ -68,7 +68,7 @@ export async function savePersonaAction(
   projectSlug: string,
   data: PersonaInput
 ) {
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   const validation = personaInputSchema.safeParse(data);
@@ -159,7 +159,7 @@ export async function uploadSpinePersonaPhotoAction(
   personaId: string,
   formData: FormData
 ): Promise<{ ok: true; avatarUrl: string } | { ok: false; error: string }> {
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   if (!personaId) {
@@ -212,7 +212,7 @@ export async function removeSpinePersonaPhotoAction(
   projectSlug: string,
   personaId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   if (!personaId) {
@@ -261,7 +261,7 @@ export async function saveJTBDAction(
   projectSlug: string,
   data: JTBDInput
 ) {
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   const validation = jtbdInputSchema.safeParse(data);
@@ -366,7 +366,7 @@ export async function savePainPointAction(
   projectSlug: string,
   data: PainPointInput
 ) {
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   const validation = painPointInputSchema.safeParse(data);

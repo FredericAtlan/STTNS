@@ -3,8 +3,8 @@
 -- Circuit court : maraîchers ↔ cantines scolaires (aucune donnée réelle).
 --
 -- Idempotent : UUID déterministes (md5 du slug + clé), ON CONFLICT partout.
--- Prérequis : les comptes démo existent dans auth.users (voir seed-panier-local.sh).
--- Usage    : ./seed-panier-local.sh (crée aussi les comptes démo)
+-- Prérequis : les coéquipiers fictifs existent dans auth.users, sans mot de passe (voir seed-panier-local.sh).
+-- Usage    : ./seed-panier-local.sh [ton.email] (crée les coéquipiers, puis te nomme admin du projet)
 -- ============================================================================
 
 BEGIN;
@@ -16,6 +16,9 @@ CREATE OR REPLACE FUNCTION pg_temp.uid(mail text) RETURNS uuid
 LANGUAGE sql STABLE AS $$ SELECT id FROM auth.users WHERE email = mail $$;
 
 -- Repart d'une page blanche pour ce projet uniquement (cascade sur ses lignes).
+-- Les liens d'abord : leur déclencheur d'audit écrit un événement qui doit viser un item encore présent.
+DELETE FROM sttns_work_item_links l USING sttns_work_items w, sttns_projects p
+WHERE l.source_id = w.id AND w.project_id = p.id AND p.slug = 'panier-local';
 DELETE FROM sttns_projects WHERE slug = 'panier-local';
 
 -- ---------------------------------------------------------------- Projet ----
@@ -50,7 +53,7 @@ INSERT INTO sttns_project_metrics (id, project_id, name, description, sort_order
 INSERT INTO sttns_cycles (id, project_id, name, start_date, end_date, capacity_points, is_active) VALUES
   (pg_temp.k('c1'), pg_temp.k('project'), 'Cycle 1 — La récolte en ligne',     '2026-10-19', '2026-10-30', 10, false),
   (pg_temp.k('c2'), pg_temp.k('project'), 'Cycle 2 — Prévisions & panier',      '2026-11-02', '2026-11-20', 12, true),
-  (pg_temp.k('c3'), pg_temp.k('project'), 'Cycle 3 — Ruptures & EGalim',        '2026-11-23', '2026-12-04', 12, false);
+  (pg_temp.k('c3'), pg_temp.k('project'), 'Cycle 3 — Ruptures & EGalim',        '2026-11-23', '2026-12-04', 12, true);  -- planifié : is_active=false signifie « clôturé »
 
 -- ------------------------------------------------------- Work items ---------
 CREATE TEMP TABLE wi (

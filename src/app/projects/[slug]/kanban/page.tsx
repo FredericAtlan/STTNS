@@ -80,7 +80,6 @@ export default async function KanbanPage({ params, searchParams }: Props) {
 
     const kanbanFeaturesAll =
       featureRows?.map((feature) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const cycleData = (feature as any).sttns_cycles?.[0];
         return {
           id: feature.id,
@@ -226,7 +225,6 @@ export default async function KanbanPage({ params, searchParams }: Props) {
   const kanbanStoriesAll =
     stories?.map((story) => {
       const featureInfo = story.parent_id ? featureMap[story.parent_id] : null;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cycleData = (story as any).sttns_cycles?.[0];
       return {
         id: story.id,

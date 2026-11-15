@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { requireProjectMember } from "@/lib/sttns/access";
+import { requireProjectEditor, requireProjectMember } from "@/lib/sttns/access";
 import { isPlatformAdmin } from "@/lib/sttns/auth";
 import { DRAFT_READONLY_MESSAGE } from "@/lib/sttns/draftOwnership";
 import {
@@ -257,7 +257,7 @@ export async function submitAssetForReview(
   authorId: string | null,
   options?: { submitComment?: string | null }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   // Étape A3 — peer-review persona (catalogue legacy) gelé.
@@ -437,13 +437,24 @@ export async function savePeerReview(
     phase1_suggestion?: string | null;
     comment?: string | null;
   },
-  authorId?: string | null
+  _clientAuthorId?: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   const supabase = await createClient();
   const user = { id: access.userId };
+
+  const table = governanceAssetTable(assetType);
+  const { data: assetRow } = await supabase
+    .from(table)
+    .select("review_status, created_by")
+    .eq("id", assetId)
+    .eq("project_id", projectId)
+    .single();
+
+  // L'auteur vient de la base, jamais du client (sinon on pouvait relire son propre travail).
+  const authorId = (assetRow as { created_by?: string | null } | null)?.created_by ?? null;
 
   if (authorId && user.id === authorId && usesCommitteeGovernance(assetType)) {
     return {
@@ -455,14 +466,6 @@ export async function savePeerReview(
   if (data.content_verdict === "request_changes" && !data.comment?.trim()) {
     return { ok: false, error: "Commentaire obligatoire pour demander des modifications." };
   }
-
-  const table = governanceAssetTable(assetType);
-  const { data: assetRow } = await supabase
-    .from(table)
-    .select("review_status")
-    .eq("id", assetId)
-    .eq("project_id", projectId)
-    .single();
 
   if (!assetRow || assetRow.review_status !== "in_review") {
     return { ok: false, error: "This item is not open for review." };

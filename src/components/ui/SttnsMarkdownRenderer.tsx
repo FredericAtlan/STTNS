@@ -28,7 +28,8 @@ export function MermaidDiagram({ code, compact = false }: { code: string; compac
         mermaid.initialize({
           startOnLoad: false,
           theme: "base",
-          securityLevel: "loose",
+          // "strict" : Mermaid assainit les libellés et désactive les clics/scripts (contenu saisi par les utilisateurs).
+          securityLevel: "strict",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
           themeVariables: {
             primaryColor: "#d1fae5",

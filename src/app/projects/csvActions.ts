@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireAuth } from "@/lib/sttns/access";
+import { requireProjectCeoAdmin, requireProjectEditor, requireProjectMember } from "@/lib/sttns/access";
 import { revalidatePath } from "next/cache";
 import type { ImportMode } from "@/lib/sttns/types";
 import {
@@ -14,7 +14,7 @@ import {
 // --- EXPORT ACTIONS ---
 
 export async function exportBatchAction(projectId: string, entities: string[]) {
-  const auth = await requireAuth();
+  const auth = await requireProjectMember(projectId);
   if (!auth.ok) return { ok: false, error: "Unauthorized" };
 
   const supabase = await createClient();
@@ -105,9 +105,19 @@ export async function exportFullProjectAction(projectId: string) {
 
 // --- IMPORT ACTIONS ---
 
+const MAX_IMPORT_ROWS = 5000;
+const COLUMN_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+// Colonnes que le fichier importé ne doit jamais fixer lui-même.
+const RESERVED_COLUMNS = new Set(["project_id", "created_by", "owner_id", "user_id"]);
+const PERSONA_CHILD_ENTITIES = new Set(["pain_points", "jtbd"]);
+
 export async function importEntityAction(projectId: string, entity: string, mode: ImportMode, rows: any[]) {
-  const auth = await requireAuth();
-  if (!auth.ok) return { ok: false, error: "Unauthorized" };
+  // Import = écriture : éditeur du projet ; « remplacer » efface tout : admin du projet.
+  const auth = mode === "replace" ? await requireProjectCeoAdmin(projectId) : await requireProjectEditor(projectId);
+  if (!auth.ok) return { ok: false, error: auth.error };
+  if (!Array.isArray(rows) || rows.length > MAX_IMPORT_ROWS) {
+    return { ok: false, error: `Import limité à ${MAX_IMPORT_ROWS} lignes.` };
+  }
 
   // Étape A3 — imports CSV catalogue Personas legacy : freeze écriture.
   // Créer / modifier des personas, pain points, JTBD passe désormais par `/why` (Spine).
@@ -153,9 +163,19 @@ export async function importEntityAction(projectId: string, entity: string, mode
     }
   }
 
+  // Personas du projet : seules cibles autorisées pour pain points / JTBD.
+  let projectPersonaIds: Set<string> | null = null;
+  if (PERSONA_CHILD_ENTITIES.has(entity)) {
+    const { data: personas } = await supabase.from("sttns_personas").select("id").eq("project_id", projectId);
+    projectPersonaIds = new Set((personas ?? []).map((p) => p.id as string));
+  }
+
   // Clean up rows before insert/upsert
   const cleanRows = rows.map(row => {
-    const cleanRow = { ...row };
+    const cleanRow: Record<string, any> = {};
+    for (const [key, value] of Object.entries(row ?? {})) {
+      if (COLUMN_NAME.test(key) && !RESERVED_COLUMNS.has(key)) cleanRow[key] = value;
+    }
     // Add project_id if it's a direct project entity
     if (entity !== "pain_points" && entity !== "jtbd") {
       cleanRow.project_id = projectId;
@@ -191,6 +211,25 @@ export async function importEntityAction(projectId: string, entity: string, mode
     return { ok: true, message: "No rows to import" };
   }
 
+  if (projectPersonaIds) {
+    const foreign = cleanRows.some((r) => !projectPersonaIds!.has(String(r.persona_id ?? "")));
+    if (foreign) return { ok: false, error: "Persona inconnue dans ce projet." };
+  }
+
+  // Fusion : un identifiant existant doit appartenir à CE projet (pas de déplacement de lignes).
+  if (mode === "merge") {
+    const ids = cleanRows.map((r) => r.id).filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (ids.length > 0) {
+      const scopeColumn = projectPersonaIds ? "persona_id" : "project_id";
+      const { data: existing, error } = await supabase.from(tableName).select(`id, ${scopeColumn}`).in("id", ids);
+      if (error) return { ok: false, error: error.message };
+      const outside = (existing ?? []).some((r: any) =>
+        projectPersonaIds ? !projectPersonaIds.has(r.persona_id) : r.project_id !== projectId
+      );
+      if (outside) return { ok: false, error: "Des lignes importées appartiennent à un autre projet." };
+    }
+  }
+
   let result;
   if (mode === "merge") {
     // Upsert based on ID
@@ -209,8 +248,8 @@ export async function importEntityAction(projectId: string, entity: string, mode
 }
 
 export async function importFullProjectAction(projectId: string, mode: ImportMode, projectData: Record<string, any[]>) {
-  const auth = await requireAuth();
-  if (!auth.ok) return { ok: false, error: "Unauthorized" };
+  const auth = mode === "replace" ? await requireProjectCeoAdmin(projectId) : await requireProjectEditor(projectId);
+  if (!auth.ok) return { ok: false, error: auth.error };
 
   // Order matters for foreign keys
   const entitiesOrder = [

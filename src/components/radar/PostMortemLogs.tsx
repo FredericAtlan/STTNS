@@ -225,7 +225,7 @@ export function PostMortemLogs({ projectSlug, logs }: Props) {
                 {dominantReason === "out_of_scope" && (
                   <>
                     <strong>Erreur de cadrage détectée.</strong> La majorité des suppressions sont
-                    "Hors scope stratégique". Envisagez une revue de la phase de discovery (Personas/JTBD)
+                    &laquo;&nbsp;Hors scope stratégique&nbsp;&raquo;. Envisagez une revue de la phase de discovery (Personas/JTBD)
                     pour mieux aligner les Epics avant leur création.
                   </>
                 )}

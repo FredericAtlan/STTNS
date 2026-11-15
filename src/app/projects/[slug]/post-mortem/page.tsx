@@ -30,12 +30,10 @@ export default async function PostMortemPage({ params }: Props) {
   const logs =
     archivedItems
       ?.filter((item) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const meta = (item.metadata as any) || {};
         return meta.archived_reason && meta.archived_at;
       })
       .map((item) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const meta = (item.metadata as any) || {};
         return {
           id: item.id,

@@ -42,6 +42,8 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/sttns/access", () => ({
   requireAuth: vi.fn(async () => ({ ok: true as const, userId: "user-1" })),
   requireProjectMember: vi.fn(async () => ({ ok: true as const, userId: "user-1" })),
+  requireProjectEditor: vi.fn(async () => ({ ok: true as const, userId: "user-1" })),
+  requireProjectCeoAdmin: vi.fn(async () => ({ ok: true as const, userId: "user-1" })),
   requireDraftAuthor: vi.fn(async () => ({ ok: true as const })),
 }));
 

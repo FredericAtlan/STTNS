@@ -1,5 +1,22 @@
+const FORMULA_START = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[-+]?\d+(?:[.,]\d+)?$/;
+
+/**
+ * Neutralise l'injection de formules (Excel, LibreOffice, Sheets) : une cellule texte qui
+ * commence par = + - @ tabulation ou retour chariot est préfixée d'une apostrophe.
+ */
+export function neutralizeCsvFormula(text: string): string {
+  return FORMULA_START.test(text) && !PLAIN_NUMBER.test(text) ? `'${text}` : text;
+}
+
+/** Inverse de neutralizeCsvFormula, pour réimporter nos propres exports sans apostrophe parasite. */
+export function restoreCsvFormula(text: string): string {
+  return text.startsWith("'") && FORMULA_START.test(text.slice(1)) ? text.slice(1) : text;
+}
+
 export function csvCell(value: unknown): string {
-  const text = value == null ? "" : String(value);
+  const raw = value == null ? "" : String(value);
+  const text = typeof value === "string" ? neutralizeCsvFormula(raw) : raw;
   return `"${text.replaceAll('"', '""')}"`;
 }
 

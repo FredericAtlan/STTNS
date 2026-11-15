@@ -57,7 +57,7 @@ export function CommandChordHint({ open, onClose }: Props) {
         ))}
 
         <p className="text-xs text-muted-foreground">
-          Astuce : appuyer <Shortcut>?</Shortcut> depuis n'importe quelle page
+          Astuce : appuyer <Shortcut>?</Shortcut> depuis n&apos;importe quelle page
           projet pour rouvrir cette aide. Les accords sont ignorés dans les
           champs de saisie.
         </p>

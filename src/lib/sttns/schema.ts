@@ -4,6 +4,7 @@ import {
   effortDaysSchema,
   impactSchema,
 } from "@/lib/sttns/valueEffort";
+import { isHttpUrl } from "@/lib/security/urls";
 
 export const WORK_ITEM_CONTEXT_TYPES = ["persona", "pain_point", "job", "metric"] as const;
 
@@ -64,14 +65,14 @@ const saveBaseSchema = {
 export const metadataDocUrlSchema = z
   .string()
   .trim()
-  .url("URL de documentation invalide.")
+  .refine((v) => v === "" || isHttpUrl(v), "URL de documentation invalide (http ou https).")
   .optional()
   .nullable();
 
 export const personaMetadataSchema = z.object({
   segment: z.string().trim().optional(),
   description: z.string().trim().optional(),
-  avatar_url: z.string().trim().url().optional().nullable(),
+  avatar_url: z.string().trim().refine(isHttpUrl, "URL invalide (http ou https).").optional().nullable(),
   doc_url: metadataDocUrlSchema,
 });
 
@@ -125,7 +126,7 @@ export const storyMetadataSchema = z.object({
 });
 
 export const taskMetadataSchema = z.object({
-  notion_url: z.string().trim().url().optional().nullable(),
+  notion_url: z.string().trim().refine((v) => v === "" || isHttpUrl(v), "URL invalide (http ou https).").optional().nullable(),
 });
 
 export const personaSaveSchema = z
@@ -258,7 +259,7 @@ export const personaInputSchema = z.object({
   code: z.string().trim().min(1).max(10).optional(),
   description: z.string().trim().optional(),
   segment: z.string().trim().optional(),
-  doc_url: z.string().trim().optional(),
+  doc_url: z.string().trim().refine((v) => v === "" || isHttpUrl(v), "URL invalide (http ou https).").optional(),
 });
 
 export const jtbdInputSchema = z.object({

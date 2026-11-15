@@ -30,12 +30,18 @@ Prérequis : Docker, Node 20+, la [CLI Supabase](https://supabase.com/docs/guide
 supabase start                     # Postgres, Auth, Storage… dans Docker
 supabase db reset                  # installe le schéma (supabase/migrations)
 cp .env.example .env.local         # puis y recopier ANON_KEY et SERVICE_ROLE_KEY de : supabase status -o env
-./scripts/demo/seed-panier-local.sh                     # projet de démonstration (fictif)
 docker compose -f docker-compose.local.yml --env-file .env.local up -d --build
 ```
 
-Ouvrir http://localhost:3001 et se connecter avec `claire.morel@panier-local.test`
-(mot de passe généré dans `.env.demo.local`).
+Ouvrir http://localhost:3001/login et **créer son propre compte** (« Créer un compte », mot de passe de
+son choix : le dépôt n'en fournit aucun). Puis charger le projet de démonstration en s'en nommant admin :
+
+```bash
+./scripts/demo/seed-panier-local.sh ton.email@exemple.fr
+```
+
+Les coéquipiers fictifs du projet (`@panier-local.test`) n'ont pas de mot de passe : on ne peut pas se
+connecter avec.
 
 Sans Docker pour l'application : `npm ci && npm run dev`.
 

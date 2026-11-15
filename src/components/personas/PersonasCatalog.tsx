@@ -267,32 +267,38 @@ function readStoredPageSize(projectSlug: string): SttnsPageSize {
   return 10;
 }
 
-export function PersonasCatalog({
-  projectId,
-  projectSlug,
-  rows,
-  vocabulary,
-  personasCastLocked = false,
-}: {
+type PersonasCatalogProps = {
   projectId: string;
   projectSlug: string;
   rows: PersonaCatalogRow[];
   vocabulary: PersonaVocabulary;
   personasCastLocked?: boolean;
-}) {
-  const base = `/projects/${projectSlug}/personas`;
+};
 
-  if (rows.length === 0) {
+export function PersonasCatalog(props: PersonasCatalogProps) {
+  if (props.rows.length === 0) {
     return (
       <EmptyStateCoach
         type="persona"
         title="Section vide"
         explanation="Pour construire votre Spine, cette section a besoin de Personas."
         actionLabel="Créer votre premier Persona"
-        actionHref={`${base}/new`}
+        actionHref={`/projects/${props.projectSlug}/personas/new`}
       />
     );
   }
+  return <PersonasCatalogList {...props} />;
+}
+
+// Hooks appelés inconditionnellement : le cas « liste vide » est traité par le parent.
+function PersonasCatalogList({
+  projectId,
+  projectSlug,
+  rows,
+  vocabulary,
+  personasCastLocked = false,
+}: PersonasCatalogProps) {
+  const base = `/projects/${projectSlug}/personas`;
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PersonaCatalogFilter>("all");

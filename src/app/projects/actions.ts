@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireAuth, requireProjectMember } from "@/lib/sttns/access";
+import { requireAuth, requireProjectCeoAdmin, requireProjectMember } from "@/lib/sttns/access";
 import {
   fetchProjectMembersGrouped,
   mapMemberRowsToSquadPreviews,
@@ -67,7 +67,7 @@ export async function createProjectAction(data: {
 export async function duplicateProjectAction(
   projectId: string
 ): Promise<{ ok: true; slug: string } | { ok: false; error: string }> {
-  const auth = await requireAuth();
+  const auth = await requireProjectMember(projectId);
   if (!auth.ok) return auth;
 
   const supabase = await createClient();
@@ -102,7 +102,7 @@ export async function duplicateProjectAction(
 export async function archiveProjectAction(
   projectId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireAuth();
+  const auth = await requireProjectCeoAdmin(projectId);
   if (!auth.ok) return auth;
 
   const supabase = await createClient();
@@ -149,23 +149,28 @@ export async function renameProjectAction(
 export async function deleteProjectAction(
   projectId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireAuth();
-  if (!auth.ok) return auth;
-
-  // We need to use the service client or an RPC because the RLS policy for DELETE on sttns_projects
-  // is restricted to platform admins only: USING (sttns_is_platform_admin())
-  // However, a project CEO should be able to delete their own project.
-  // We'll check if the user is CEO, and if so, use the service client to bypass RLS.
-  const { isProjectCeoAdmin } = await import("@/lib/sttns/access");
-  const isCeo = await isProjectCeoAdmin(projectId, auth.userId);
-  
-  if (!isCeo) {
+  // La RLS réserve DELETE aux admins plateforme ; l'admin du projet passe par le client service,
+  // donc tous les contrôles sont faits ici, explicitement.
+  const auth = await requireProjectCeoAdmin(projectId);
+  if (!auth.ok) {
     return { ok: false, error: "Only the project CEO or a platform admin can delete a project." };
+  }
+
+  // Garde-fou : on ne supprime définitivement qu'un projet déjà archivé (lu via la RLS de l'utilisateur).
+  const supabase = await createClient();
+  const { data: project, error: readErr } = await supabase
+    .from("sttns_projects")
+    .select("id, slug, is_active")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (readErr || !project) return { ok: false, error: readErr?.message ?? "Project not found." };
+  if (project.is_active !== false) {
+    return { ok: false, error: "Archivez le projet avant de le supprimer définitivement." };
   }
 
   const { createServiceClient } = await import("@/lib/supabase/server");
   const serviceClient = createServiceClient();
-  
+
   if (!serviceClient) {
     return { ok: false, error: "Server configuration error: Service role key missing." };
   }
@@ -173,6 +178,7 @@ export async function deleteProjectAction(
   const { error } = await serviceClient.from("sttns_projects").delete().eq("id", projectId);
 
   if (error) return { ok: false, error: error.message };
+  console.info(`[sttns] projet ${project.slug} (${projectId}) supprimé par ${auth.userId}`);
   revalidatePath("/", "layout");
   revalidatePath("/");
   return { ok: true };

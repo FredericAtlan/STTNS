@@ -1,3 +1,4 @@
+import { safeInternalPath } from "@/lib/security/urls";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -43,8 +44,8 @@ export async function updateSession(request: NextRequest) {
 
   if (user && request.nextUrl.pathname === "/login") {
     const next = request.nextUrl.searchParams.get("next");
-    if (next && next.startsWith("/") && !next.startsWith("//")) {
-      return NextResponse.redirect(new URL(next, request.url));
+    if (next) {
+      return NextResponse.redirect(new URL(safeInternalPath(next), request.url));
     }
     const url = request.nextUrl.clone();
     url.pathname = "/";

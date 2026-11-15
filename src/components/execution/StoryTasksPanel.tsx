@@ -14,6 +14,7 @@ import {
 import type { StoryTaskRow } from "@/lib/sttns/storiesSpine";
 import { memberInitialsFromNames } from "@/lib/sttns/memberDisplay";
 import { cn } from "@/lib/utils";
+import { safeHref } from "@/lib/security/urls";
 
 interface Props {
   storyId: string;
@@ -231,9 +232,9 @@ function TaskNotionLink({
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      {notionUrl ? (
+      {safeHref(notionUrl) ? (
         <a
-          href={notionUrl}
+          href={safeHref(notionUrl)}
           target="_blank"
           rel="noopener noreferrer"
           title="Ouvrir la doc Notion"

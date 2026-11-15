@@ -3,6 +3,7 @@ import { SpineObjectIcon } from "@/components/ui/SpineObjectIcon";
 import { TaskAssigneeBadge } from "@/components/execution/TaskAssigneeBadge";
 import type { SpineStoryTaskPreview } from "@/lib/sttns/storiesSpine";
 import { cn } from "@/lib/utils";
+import { safeHref } from "@/lib/security/urls";
 
 type MemberLike = {
   user_id: string;
@@ -20,7 +21,7 @@ interface Props {
 function TaskNotionLinkIcon({ url, title }: { url: string; title: string }) {
   return (
     <a
-      href={url}
+      href={safeHref(url)}
       target="_blank"
       rel="noopener noreferrer"
       title="Ouvrir la documentation Notion"

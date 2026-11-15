@@ -7,7 +7,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireProjectMember } from "@/lib/sttns/access";
+import { requireProjectEditor } from "@/lib/sttns/access";
 import {
   deletePersona,
   duplicatePersona,
@@ -81,7 +81,7 @@ export async function renamePersonaAction(
   const frozen = legacyPersonaWriteForbidden();
   if (frozen) return frozen;
 
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   const supabase = await createClient();
@@ -117,7 +117,7 @@ export async function setPersonaProjectScopeAction(
   const frozen = legacyPersonaWriteForbidden();
   if (frozen) return frozen;
 
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   const supabase = await createClient();
@@ -156,7 +156,7 @@ export async function lockPersonasCastAction(
   const frozen = legacyPersonaWriteForbidden();
   if (frozen) return frozen;
 
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   const supabase = await createClient();
@@ -198,7 +198,7 @@ export async function unlockPersonasCastAction(
   const frozen = legacyPersonaWriteForbidden();
   if (frozen) return frozen;
 
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   const supabase = await createClient();
@@ -224,7 +224,7 @@ export async function uploadLegacyPersonaPhotoAction(
   const frozen = legacyPersonaWriteForbidden();
   if (frozen) return frozen;
 
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   if (!personaId) {
@@ -279,7 +279,7 @@ export async function removeLegacyPersonaPhotoAction(
   const frozen = legacyPersonaWriteForbidden();
   if (frozen) return frozen;
 
-  const access = await requireProjectMember(projectId);
+  const access = await requireProjectEditor(projectId);
   if (!access.ok) return access;
 
   if (!personaId) {

@@ -269,8 +269,8 @@ export function HealthCopilotBar({ projectSlug }: Props) {
             ))}
           </ul>
           <p className="mt-3 text-[10px] text-muted-foreground">
-            Règles déterministes — pas d'API LLM. Alimenté par la même source
-            que le Radar d'Hygiène.
+            Règles déterministes — pas d&apos;API LLM. Alimenté par la même source
+            que le Radar d&apos;Hygiène.
           </p>
         </div>
       )}

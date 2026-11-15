@@ -1,9 +1,12 @@
 import Papa from "papaparse";
+import { restoreCsvFormula } from "@/lib/sttns/csvExport";
 
 export function generateCsv<T>(data: T[]): string {
   return Papa.unparse(data, {
     header: true,
     quotes: true,
+    // Préfixe ' devant = + - @ … : pas d'exécution de formule à l'ouverture dans un tableur.
+    escapeFormulae: true,
   });
 }
 
@@ -12,6 +15,7 @@ export function parseCsv<T>(csvString: string): T[] {
     header: true,
     skipEmptyLines: true,
     dynamicTyping: true, // Convert numbers and booleans
+    transform: (value) => restoreCsvFormula(value),
   });
   
   if (result.errors.length > 0) {

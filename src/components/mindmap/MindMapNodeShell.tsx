@@ -9,6 +9,7 @@ import { EffortBadge, RiskBadge } from "@/components/ui/ValueEffortBadges";
 import type { MindMapNodeData, MindMapNodeKind } from "./types";
 import { cn } from "@/lib/utils";
 import type { ComplexityLevel } from "@/lib/sttns/valueEffort";
+import { safeHref } from "@/lib/security/urls";
 
 const KIND_STYLES: Record<
   MindMapNodeKind,
@@ -188,9 +189,9 @@ function MindMapNodeShellComponent({ id, data }: ShellProps) {
                 <span className="truncate">{nodeData.cycleName}</span>
               </span>
             )}
-            {nodeData.docUrl && (
+            {safeHref(nodeData.docUrl) && (
               <a
-                href={nodeData.docUrl}
+                href={safeHref(nodeData.docUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={`Ouvrir ${docLabel}`}
