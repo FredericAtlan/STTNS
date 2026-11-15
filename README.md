@@ -64,3 +64,7 @@ Next.js 14 (App Router) · TypeScript · Tailwind · Supabase (PostgreSQL, Auth,
 Ce dépôt est une **copie publiée** du dépôt de développement, régénérée automatiquement à chaque version.
 Les migrations de développement y sont remplacées par un schéma de référence unique
 (`supabase/migrations/00000000000000_schema.sql`) : pensé pour une installation neuve.
+
+## Licence
+
+[MIT](LICENSE) — © 2026 Frédéric Atlan.
