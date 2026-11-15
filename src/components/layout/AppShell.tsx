@@ -96,7 +96,7 @@ export function AppShell({
 
   async function signOut() {
     await createClient().auth.signOut();
-    router.push("/login");
+    router.push("/login?local=off"); // en local, ne pas rouvrir aussitôt une session
     router.refresh();
   }
 

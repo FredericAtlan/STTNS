@@ -1,10 +1,13 @@
 import { safeInternalPath } from "@/lib/security/urls";
+import { publicRequestUrl } from "@/lib/sttns/localLogin";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/reset-password"];
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/reset-password", "/auth/local-login"];
 
 export async function updateSession(request: NextRequest) {
+  // URL complète transmise aux composants serveur (ex. layout /login) ; écrase toute valeur client.
+  request.headers.set("x-sttns-url", publicRequestUrl(request.url, request.headers.get("host")));
   let response = NextResponse.next({ request: { headers: request.headers } });
 
   const supabase = createServerClient(

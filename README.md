@@ -43,6 +43,10 @@ son choix : le dépôt n'en fournit aucun). Puis charger le projet de démonstra
 Les coéquipiers fictifs du projet (`@panier-local.test`) n'ont pas de mot de passe : on ne peut pas se
 connecter avec.
 
+Pour entrer **sans mot de passe en local**, mettre `STTNS_LOCAL_LOGIN=1` dans `.env.local` (et, si besoin,
+`STTNS_LOCAL_LOGIN_EMAIL`) : `/login` ouvre alors directement une session. Ce raccourci est ignoré dès que
+Supabase ou l'adresse de l'appli ne sont pas sur `localhost` ; `/login?local=off` affiche l'écran normal.
+
 Sans Docker pour l'application : `npm ci && npm run dev`.
 
 ## Le projet de démonstration
